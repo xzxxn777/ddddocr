@@ -2,3 +2,4 @@ ddddocr
 Flask
 requests
 urllib3==1.25.11
+numpy==1.26.4
