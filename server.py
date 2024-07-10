@@ -158,4 +158,4 @@ def hello_world():
 
 # 启动Flask应用
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', debug=True, port=7777)
+    app.run(host='::', threaded=True, debug=True, port=7777)
