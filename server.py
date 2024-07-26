@@ -1,4 +1,7 @@
+from io import BytesIO
+
 import requests
+from PIL import Image
 from flask import Flask, request, jsonify
 import ddddocr
 import logging
@@ -24,6 +27,11 @@ def get_image_bytes(image_data):
     else:
         raise ValueError("Unsupported image data type")
 
+def image_to_base64(image, format='PNG'):
+    buffered = BytesIO()
+    image.save(buffered, format=format)
+    img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
+    return img_str
 
 class CAPTCHA:
     def __init__(self):
@@ -37,6 +45,17 @@ class CAPTCHA:
             sliding_bytes = get_image_bytes(sliding_image)
             back_bytes = get_image_bytes(back_image)
             res = self.ocr.slide_match(sliding_bytes, back_bytes, simple_target=simple_target)
+            return res['target'][0]
+        except Exception as e:
+            app.logger.error(f"出现错误: {e}")
+            return None
+
+    # 滑块对比函数，接收两个图像，返回滑块的目标位置
+    def slideComparison(self, sliding_image, back_image):
+        try:
+            sliding_bytes = get_image_bytes(sliding_image)
+            back_bytes = get_image_bytes(back_image)
+            res = self.ocr.slide_comparison(sliding_bytes, back_bytes)
             return res['target'][0]
         except Exception as e:
             app.logger.error(f"出现错误: {e}")
@@ -77,6 +96,25 @@ class CAPTCHA:
             app.logger.error(f"错误详细信息: {e.args}")
             return None
 
+
+    # 图片分割处理函数，接收一个图像，返回计算结果
+    def crop(self, image, y_coordinate):
+        try:
+            image = Image.open(BytesIO(requests.get(image).content))
+            # 分割图片
+            upper_half = image.crop((0, 0, image.width, y_coordinate))
+            middle_half = image.crop((0, y_coordinate, image.width, y_coordinate*2))
+            lower_half = image.crop((0, y_coordinate*2, image.width, image.height))
+            # 将分割后的图片转换为Base64编码
+            slidingImage = image_to_base64(upper_half)
+            backImage = image_to_base64(lower_half)
+            return jsonify({'slidingImage': slidingImage, 'backImage': backImage})
+        except Exception as e:
+            app.logger.error(f"出现错误: {e}")
+            app.logger.error(f"错误类型: {type(e)}")
+            app.logger.error(f"错误详细信息: {e.args}")
+            return None
+
     # 辅助函数，根据输入类型获取图像字节流
 
 
@@ -93,6 +131,24 @@ def capcode():
         back_image = data['backImage']
         simple_target = data.get('simpleTarget', True)
         result = captcha.capcode(sliding_image, back_image, simple_target)
+        if result is None:
+            app.logger.error('处理过程中出现错误.')
+            return jsonify({'error': '处理过程中出现错误.'}), 500
+        return jsonify({'result': result})
+    except Exception as e:
+        app.logger.error(f"出现错误: {e}")
+        return jsonify({'error': f"出现错误: {e}"}), 400
+
+
+# 滑块对比路由，接收POST请求，返回滑块的目标位置
+@app.route('/slideComparison', methods=['POST'])
+def slideComparison():
+    try:
+        data = request.get_json()
+        sliding_image = data['slidingImage']
+        back_image = data['backImage']
+
+        result = captcha.slideComparison(sliding_image, back_image)
         if result is None:
             app.logger.error('处理过程中出现错误.')
             return jsonify({'error': '处理过程中出现错误.'}), 500
@@ -149,6 +205,21 @@ def calculate():
         app.logger.error(f"出现错误: {e}")
         return jsonify({'error': f"出现错误: {e}"}), 400
 
+# 图片分割路由，接收POST请求，返回计算结果
+@app.route('/crop', methods=['POST'])
+def crop():
+    try:
+        data = request.get_json()
+        image = data['image']
+        y_coordinate = data['y_coordinate']
+        result = captcha.crop(image, y_coordinate)
+        if result is None:
+            app.logger.error('处理过程中出现错误.')
+            return jsonify({'error': '处理过程中出现错误.'}), 500
+        return result
+    except Exception as e:
+        app.logger.error(f"出现错误: {e}")
+        return jsonify({'error': f"出现错误: {e}"}), 400
 
 # 基本运行状态路由，返回一个表示服务器正常运行的消息
 @app.route('/')

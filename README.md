@@ -34,3 +34,11 @@ http://ip:7777/detection
 ```shell
 http://ip:7777/calculate
 ```
+### 滑块对比
+```shell
+http://ip:7777/slideComparison
+```
+### 图片分割
+```shell
+http://ip:7777/crop
+```
