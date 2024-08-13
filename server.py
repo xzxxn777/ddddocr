@@ -1,5 +1,7 @@
 from io import BytesIO
 
+import cv2
+import numpy as np
 import requests
 from PIL import Image
 from flask import Flask, request, jsonify
@@ -115,6 +117,34 @@ class CAPTCHA:
             app.logger.error(f"错误详细信息: {e.args}")
             return None
 
+    # 点选处理函数，接收一个图像，返回计算结果
+    def select(self, image):
+        try:
+            image_bytes = get_image_bytes(image)
+            # 将二进制数据转换为 numpy 数组
+            image_array = np.frombuffer(image_bytes, dtype=np.uint8)
+            # 使用 cv2.imdecode 将 numpy 数组解码为图像
+            im = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
+            bboxes = self.det.detection(image_bytes)
+            json = []
+            for bbox in bboxes:
+                x1, y1, x2, y2 = bbox
+                x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+                cropped_image = im[y1:y2, x1:x2]
+                # 将图像编码为内存中的字节流（如png格式）
+                _, buffer = cv2.imencode('.png', cropped_image)
+                # 将字节流转换为 Base64 编码
+                image_base64 = base64.b64encode(buffer).decode('utf-8')
+                result = self.ocr.classification(image_base64)
+                json.append({result: bbox})
+
+            return json
+        except Exception as e:
+            app.logger.error(f"出现错误: {e}")
+            app.logger.error(f"错误类型: {type(e)}")
+            app.logger.error(f"错误详细信息: {e.args}")
+            return None
+
     # 辅助函数，根据输入类型获取图像字节流
 
 
@@ -213,6 +243,22 @@ def crop():
         image = data['image']
         y_coordinate = data['y_coordinate']
         result = captcha.crop(image, y_coordinate)
+        if result is None:
+            app.logger.error('处理过程中出现错误.')
+            return jsonify({'error': '处理过程中出现错误.'}), 500
+        return result
+    except Exception as e:
+        app.logger.error(f"出现错误: {e}")
+        return jsonify({'error': f"出现错误: {e}"}), 400
+
+# 点选路由，接收POST请求，返回计算结果
+@app.route('/select', methods=['POST'])
+def select():
+    try:
+        data = request.get_json()
+        image = data['image']
+
+        result = captcha.select(image)
         if result is None:
             app.logger.error('处理过程中出现错误.')
             return jsonify({'error': '处理过程中出现错误.'}), 500

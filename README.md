@@ -42,3 +42,7 @@ http://ip:7777/slideComparison
 ```shell
 http://ip:7777/crop
 ```
+### 图片点选
+```shell
+http://ip:7777/select
+```
